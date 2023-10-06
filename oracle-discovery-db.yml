@@ -1,0 +1,50 @@
+---
+- name: Get Oracle Database Information
+  hosts: your_oracle_server  # Replace with the hostname or IP of your Oracle server
+  gather_facts: no  # Disable gathering facts to speed up the playbook
+
+  tasks:
+    - name: Run SQL query to retrieve Oracle DB info
+      become: yes  # Run the command with sudo (if necessary)
+      shell: |
+        sqlplus -S / as sysdba <<EOF
+        set serveroutput on;
+        DECLARE
+          db_name   VARCHAR2(50);
+          host_name VARCHAR2(50);
+        BEGIN
+          SELECT name INTO db_name FROM v$database;
+          SELECT host_name INTO host_name FROM v$instance;
+          dbms_output.put_line('DB_NAME:' || db_name);
+          dbms_output.put_line('HOST_NAME:' || host_name);
+        END;
+        /
+        exit
+        EOF
+      register: oracle_db_info
+
+    - name: Parse Oracle DB information
+      set_fact:
+        db_name: "{{ oracle_db_info.stdout_lines[0] | regex_replace('DB_NAME:', '') }}"
+        host_name: "{{ oracle_db_info.stdout_lines[1] | regex_replace('HOST_NAME:', '') }}"
+
+    - name: Get Tablespace Names
+      become: yes
+      shell: |
+        sqlplus -S / as sysdba <<EOF
+        set pagesize 0 feedback off verify off heading off echo off;
+        SELECT tablespace_name FROM dba_tablespaces;
+        exit
+        EOF
+      register: tablespace_info
+
+    - name: Parse Tablespace Names
+      set_fact:
+        tablespace_names: "{{ tablespace_info.stdout_lines | list }}"
+    
+    - name: Display Oracle DB Information
+      debug:
+        var:
+          - db_name
+          - host_name
+          - tablespace_names
